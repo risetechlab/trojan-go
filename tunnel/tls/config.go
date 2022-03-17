@@ -17,6 +17,7 @@ type WebsocketConfig struct {
 
 type TLSConfig struct {
 	Verify               bool     `json:"verify" yaml:"verify"`
+	CertSHA1Sum          string   `json:"cert_sha1sum" yaml:"cert_sha1sum"`
 	VerifyHostName       bool     `json:"verify_hostname" yaml:"verify-hostname"`
 	CertPath             string   `json:"cert" yaml:"cert"`
 	KeyPath              string   `json:"key" yaml:"key"`

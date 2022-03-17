@@ -2,9 +2,12 @@ package tls
 
 import (
 	"context"
+	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"strings"
@@ -22,6 +25,8 @@ import (
 // Client is a tls client
 type Client struct {
 	verify        bool
+	verifySHA1Sum bool
+	certSHA1Sum   [20]byte
 	sni           string
 	ca            *x509.CertPool
 	cipher        []uint16
@@ -78,6 +83,16 @@ func (c *Client) DialConn(_ *tunnel.Address, overlay tunnel.Tunnel) (tunnel.Conn
 	if err != nil {
 		return nil, common.NewError("tls failed to handshake with remote server").Base(err)
 	}
+
+	if c.verifySHA1Sum {
+		cert := tlsConn.ConnectionState().PeerCertificates[0]
+		certFingerPrint := sha1.Sum(cert.Raw)
+		if certFingerPrint != c.certSHA1Sum {
+			tlsConn.Close()
+			return nil, common.NewError(fmt.Sprintf("server certificate fingerprint %s doesn't match with local specified %s", hex.EncodeToString(certFingerPrint[:]), hex.EncodeToString(c.certSHA1Sum[:])))
+		}
+	}
+
 	return &transport.Conn{
 		Conn: tlsConn,
 	}, nil
@@ -115,6 +130,15 @@ func NewClient(ctx context.Context, underlay tunnel.Client) (*Client, error) {
 		sessionTicket: cfg.TLS.ReuseSession,
 		fingerprint:   cfg.TLS.Fingerprint,
 		helloID:       helloID,
+	}
+
+	if cfg.TLS.CertSHA1Sum != "" {
+		rawSHA1Sum, err := hex.DecodeString(cfg.TLS.CertSHA1Sum)
+		if err != nil {
+			return nil, common.NewError("failed to decode cert sha1sum string").Base(err)
+		}
+		copy(client.certSHA1Sum[:], rawSHA1Sum[:20])
+		client.verifySHA1Sum = true
 	}
 
 	if cfg.TLS.CertPath != "" {
